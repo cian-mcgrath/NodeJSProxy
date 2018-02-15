@@ -25,7 +25,8 @@ var proxyServer = http.createServer(onRequest);
 proxyServer.on('connect', onConnect);
 // Activates this server, listening on specified port.
 proxyServer.listen(listenerPort, host, () => {
-	console.log("Proxy online, listening on: " + host + ":" + listenerPort);
+	console.log("Proxy online, listening on:", host + ":" + listenerPort);
+  readCommand();
 });
 
 
@@ -35,7 +36,7 @@ function onRequest(request, response) {
   var targetUrl = url.parse(request.url,true);
 
   if(urlBlocked(targetUrl.host)){
-    console.log("HTTP request to: " + targetUrl.host + " has been blocked by the proxy.");
+    console.log("HTTP request to:", targetUrl.host, "has been blocked by the proxy.");
     response.writeHead(403);
     response.end("<h1>This domain is being actively blocked by the proxy.<h1>");
   }
@@ -63,6 +64,7 @@ function onRequest(request, response) {
     });
     request.pipe(proxyRequest);
   }
+  readCommand(); // allow for the input on a new command
 }
 
 /*------- Connection Handling --------*/
@@ -75,29 +77,33 @@ function onConnect(request, socket, head){
 
   if(urlBlocked(domainOfHost)){
     console.log("HTTPS request to: " + domainOfHost + " has been blocked by the proxy.");
-    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n");
+    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n"
+                  + "Proxy-agent: Node.js-Proxy\r\n\r\n");
     socket.end("<h1>This domain is being actively blocked by the proxy.<h1>");
   }
   else{
 
-    console.log('Serving HTTPS request to:', domainOfHost, port);
+    console.log("Serving HTTPS request to:", domainOfHost, port);
     var proxySocket = new net.Socket();
     proxySocket.connect(port, domainOfHost, () => {
         proxySocket.write(head);
         //notify the server that the connection has been established
-        socket.write('HTTP/' + request.httpVersion + ' 200 Connection Established\r\n' +
-                    + 'Proxy-agent: Node.js-Proxy\r\n\r\n');
+        socket.write("HTTP/" + request.httpVersion + " 200 Connection Established\r\n" +
+                    + "Proxy-agent: Node.js-Proxy\r\n\r\n");
         // connect pipe output of both sockets so that they can talk to one another
         // it also handles potential errors that arise from the piping of results
         proxySocket.pipe(socket).on('error', () => {
+          console.log("error in piping to client");
           socket.write("HTTP/" + request.httpVersion + " 500 Connection error\r\n\r\n");
           socket.end();
         });
         socket.pipe(proxySocket).on('error', () => {
+          console.log("error in piping to server");
           proxySocket.end();
         });
     });
   }
+  readCommand(); // allow for the input on a new command
 }
 
 
@@ -118,10 +124,10 @@ function unblockURL(urlToUnblock){
   if(urlBlocked(urlToUnblock)){
     //remove the url from the json file
     delete blockedURLs[urlToUnblock];
-    console.log(urlToBlock + " is now unblocked.")
+    console.log(urlToUnblock + " is now unblocked.")
   }
   else
-    console.log(urlToBlock + " was not blocked.")
+    console.log(urlToUnblock + " was not blocked.")
 }
 
 // writes the list of blocked urls to the file so they can be loaded again.
@@ -131,6 +137,64 @@ function updateBlockedUrlFile(){
   });
 }
 
+// attempts to get the url from the list of blocked URLs,
+// which gets evalutated to false
 function urlBlocked(urlToCheck){
   return blockedURLs[urlToCheck];
+}
+
+
+/*------- Management Console --------*/
+function readCommand(){
+  rl.setPrompt(">");
+  rl.prompt();
+}
+
+rl.on('line', (input) =>{
+  var args = input.split(' ');
+  switch(args[0]){
+
+    case "block":
+      if(args.length == 2){
+        blockURL(args[1]);
+        updateBlockedUrlFile();
+      }
+      else
+        console.log("Invalid parameters, only supply one URL");
+      break;
+
+    case "unblock":
+      if(args.length == 2){
+        unblockURL(args[1]);
+        updateBlockedUrlFile();
+      }
+      else
+        console.log("Invalid parameters, only supply one URL");
+      break;
+
+    case "blocklist":
+      var blocked = "Blocked URLs are : \n";
+      for (key in blockedURLs)
+        blocked += key + "\n";
+      console.log(blocked);
+      break;
+
+    case "help":
+      help();
+      break;
+
+    case "quit":
+      proxyServer.close();
+      process.exit();
+      break;
+
+    default:
+      console.log("Unknown command, showing possible commands: ");
+      help();
+  }
+  readCommand();
+});
+
+function help(){
+  console.log("Available commands are 'block', 'unblock', 'blocklist' and  'quit'.")
 }
