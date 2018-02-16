@@ -76,13 +76,13 @@ function onConnect(request, socket, head){
   // var port = parseInt(parsedHostAndPort[1]);
 
   var targetUrl = url.parse('https://'+ request.url);
+  // if the url is blocked, do not forward the request
   if(urlBlocked(targetUrl.hostname)){
     console.log("HTTPS request to: " + targetUrl.hostname + " has been blocked by the proxy.");
-    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n");
+    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n"); //TODO fix this bit
     socket.end();
   }
   else{
-
     console.log("Serving HTTPS request to:", targetUrl.hostname, targetUrl.port);
     var proxySocket = new net.Socket();
     proxySocket.connect(targetUrl.port, targetUrl.hostname, () => {
