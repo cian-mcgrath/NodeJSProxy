@@ -12,16 +12,16 @@ const rl = readline.createInterface({
   output: process.stdout
 });
 
-//load in the blacklist
+//load in the list of blocked URLs
 var blockedURLs = JSON.parse(fs.readFileSync("blockedURLs.json"));
-//initialise an empty cache, as should not be stored on disk
+//initialise an empty cache for that session
 var cache = {};
 
 
 /*-------Server Creation--------*/
-//create a http server and default request callback function
+// Create a http server and default request callback function
 var proxyServer = http.createServer(onRequest);
-//add in connection capabilities for HTTPS
+// Add in connection capabilities for HTTPS
 proxyServer.on('connect', onConnect);
 // Activates this server, listening on specified port.
 proxyServer.listen(listenerPort, host, () => {
@@ -31,7 +31,7 @@ proxyServer.listen(listenerPort, host, () => {
 
 
 /*------- Request Handling --------*/
-//handles http connections
+// Handles http connections
 function onRequest(request, response) {
   var targetUrl = url.parse(request.url,true);
 
@@ -41,9 +41,14 @@ function onRequest(request, response) {
     response.end("<h1>This domain is being actively blocked by the proxy.<h1>");
   }
   else{
-    //log the connection in the server
+    //TODO implement cache here
+    // if(cached(request.url)){
+    //   console.log('Serving HTTP request to: ' + request.url );
+    // }
+
+    // Log the connection in the server
     console.log('Serving HTTP request to: ' + request.url);
-    //create the options for the request the proxy is going to send
+    // Create the options for the request the proxy is going to send
     var forwardingOptions = {
       hostname: targetUrl.hostname,
       path: targetUrl.path,
@@ -51,35 +56,31 @@ function onRequest(request, response) {
       headers: request.headers
     };
 
-    // creates the proxy request, and sends it off.
-    // pipes the the readable proxy request through to the writable response of the
+    // Creates the proxy request, and sends it off.
+    // Pipes the the readable proxy request through to the writable response of the
     // client. No need for the use of options, as defaults to ending stream, as wanted
     // piping is used to reduce the memory footprint of the proxy, as it doesn't have to
     // buffer the entire request.
     var proxyRequest = http.request(forwardingOptions, (proxyResponse)=>{
-      //set the client response to that of the response of the proxy request
+      // Set the client response to that of the response of the proxy request
       const { statusCode, statusMessage, headers } = proxyResponse;
       response.writeHead(statusCode, statusMessage, headers);
       proxyResponse.pipe(response);
     });
     request.pipe(proxyRequest);
   }
-  commandPrompt(); // allow for the input on a new command
+  commandPrompt(); // Allow for the input on a new command
 }
 
 /*------- Connection Handling --------*/
 // handles HTTPS connections
 function onConnect(request, socket, head){
-  // parse the domain and port from the url of the request.
-  // var parsedHostAndPort = request.url.split(':');
-  // var domainOfHost = parsedHostAndPort[0];
-  // var port = parseInt(parsedHostAndPort[1]);
-
+  // Parse the domain and port from the url of the request.
   var targetUrl = url.parse('https://'+ request.url);
-  // if the url is blocked, do not forward the request
+  // If the url is blocked, do not forward the request
   if(urlBlocked(targetUrl.hostname)){
     console.log("HTTPS request to: " + targetUrl.hostname + " has been blocked by the proxy.");
-    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n"); //TODO fix this bit
+    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n");
     socket.end();
   }
   else{
@@ -87,9 +88,9 @@ function onConnect(request, socket, head){
     var proxySocket = new net.Socket();
     proxySocket.connect(targetUrl.port, targetUrl.hostname, () => {
         proxySocket.write(head);
-        //notify the client that the connection has been established
+        // Notify the client that the connection has been established
         socket.write("HTTP/" + request.httpVersion + " 200 Connection Established\r\n\r\n");
-        // connect pipe output of both sockets so that they can talk to one another
+        // Connect pipe output of both sockets so that they can talk to one another
         // it also handles potential errors that arise from the piping of results
         proxySocket.pipe(socket).on('error', (err) => {
           console.log("Error in piping to client\n", err.stack);
@@ -104,21 +105,21 @@ function onConnect(request, socket, head){
 
 
 /*------- URL Blocking --------*/
-// block a url from being accessed
+// Block a url from being accessed
 function blockURL(urlToBlock){
   if(urlBlocked(urlToBlock))
     console.log(urlToBlock + " is already blocked.")
   else{
-    // add the url to the list of blocked addresses
+    // Add the url to the list of blocked addresses
     blockedURLs[urlToBlock] = true;
     console.log(urlToBlock + " is now blocked.")
   }
 }
 
-// unblock a url from being accessed
+// Unblock a url from being accessed
 function unblockURL(urlToUnblock){
   if(urlBlocked(urlToUnblock)){
-    //remove the url from the json file
+    // Remove the url from the json file
     delete blockedURLs[urlToUnblock];
     console.log(urlToUnblock + " is now unblocked.")
   }
@@ -126,29 +127,31 @@ function unblockURL(urlToUnblock){
     console.log(urlToUnblock + " was not blocked.")
 }
 
-// writes the list of blocked urls to the file so they can be loaded again.
+// Writes the list of blocked urls to the file so they can be loaded again.
 function updateBlockedUrlFile(){
   fs.writeFile('blockedURLs.json', JSON.stringify(blockedURLs), (err) => {
     	if (err) throw err;
   });
 }
 
-// attempts to get the url from the list of blocked URLs,
-// which gets evalutated to false
+// Attempts to get the url from the list of blocked URLs,
+// which gets evalutated to false in an if statement
 function urlBlocked(urlToCheck){
   return blockedURLs[urlToCheck];
 }
 
 
 /*------- Management Console --------*/
-//prompts user for input
+// Prompts user for input
 function commandPrompt(){
   rl.setPrompt(">");
   rl.prompt();
 }
 
+// Reads entered command
 rl.on('line', (input) =>{
   var args = input.split(' ');
+  // Parse the command entered by the user
   switch(args[0]){
 
     case "block":
@@ -157,7 +160,7 @@ rl.on('line', (input) =>{
         updateBlockedUrlFile();
       }
       else
-        console.log("Invalid parameters, only supply one URL");
+        console.log("Invalid parameters, please supply only one URL");
       break;
 
     case "unblock":
@@ -166,7 +169,7 @@ rl.on('line', (input) =>{
         updateBlockedUrlFile();
       }
       else
-        console.log("Invalid parameters, only supply one URL");
+        console.log("Invalid parameters, please supply only one URL");
       break;
 
     case "blocklist":
@@ -189,9 +192,25 @@ rl.on('line', (input) =>{
       console.log("Unknown command, showing possible commands: ");
       help();
   }
-  commandPrompt(); // allow for the input of sequential commands
+  commandPrompt(); // Allow for the input of sequential commands
 });
 
+// Displays the list of usable commands
 function help(){
   console.log("Available commands are 'block', 'unblock', 'blocklist' and  'exit'.")
+}
+
+
+/*------------------- Caching ---------------------*/
+// As HTTPS requests cannot be cached, only HTTP data is stored
+
+// Checks to see if url is in the cache, by attempting to retreive it from the cache
+// which is evaluated to false in an if statement
+function isCached(urlToCheck){
+  return cache[urlToCheck];
+}
+
+// Adds an item to the cache
+function addToCache(){
+
 }
