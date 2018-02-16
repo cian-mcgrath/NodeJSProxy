@@ -26,7 +26,7 @@ proxyServer.on('connect', onConnect);
 // Activates this server, listening on specified port.
 proxyServer.listen(listenerPort, host, () => {
 	console.log("Proxy online, listening on:", host + ":" + listenerPort);
-  readCommand();
+  commandPrompt();// allow for the input on a new command
 });
 
 
@@ -64,46 +64,42 @@ function onRequest(request, response) {
     });
     request.pipe(proxyRequest);
   }
-  readCommand(); // allow for the input on a new command
+  commandPrompt(); // allow for the input on a new command
 }
 
 /*------- Connection Handling --------*/
 // handles HTTPS connections
 function onConnect(request, socket, head){
   // parse the domain and port from the url of the request.
-  var parsedHostAndPort = request.url.split(':');
-  var domainOfHost = parsedHostAndPort[0];
-  var port = parseInt(parsedHostAndPort[1]);
+  // var parsedHostAndPort = request.url.split(':');
+  // var domainOfHost = parsedHostAndPort[0];
+  // var port = parseInt(parsedHostAndPort[1]);
 
-  if(urlBlocked(domainOfHost)){
-    console.log("HTTPS request to: " + domainOfHost + " has been blocked by the proxy.");
-    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n"
-                  + "Proxy-agent: Node.js-Proxy\r\n\r\n");
-    socket.end("<h1>This domain is being actively blocked by the proxy.<h1>");
+  var targetUrl = url.parse('https://'+ request.url);
+  if(urlBlocked(targetUrl.hostname)){
+    console.log("HTTPS request to: " + targetUrl.hostname + " has been blocked by the proxy.");
+    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n");
+    socket.end();
   }
   else{
 
-    console.log("Serving HTTPS request to:", domainOfHost, port);
+    console.log("Serving HTTPS request to:", targetUrl.hostname, targetUrl.port);
     var proxySocket = new net.Socket();
-    proxySocket.connect(port, domainOfHost, () => {
+    proxySocket.connect(targetUrl.port, targetUrl.hostname, () => {
         proxySocket.write(head);
-        //notify the server that the connection has been established
-        socket.write("HTTP/" + request.httpVersion + " 200 Connection Established\r\n" +
-                    + "Proxy-agent: Node.js-Proxy\r\n\r\n");
+        //notify the client that the connection has been established
+        socket.write("HTTP/" + request.httpVersion + " 200 Connection Established\r\n\r\n");
         // connect pipe output of both sockets so that they can talk to one another
         // it also handles potential errors that arise from the piping of results
-        proxySocket.pipe(socket).on('error', () => {
-          console.log("error in piping to client");
-          socket.write("HTTP/" + request.httpVersion + " 500 Connection error\r\n\r\n");
-          socket.end();
+        proxySocket.pipe(socket).on('error', (err) => {
+          console.log("Error in piping to client\n", err.stack);
         });
-        socket.pipe(proxySocket).on('error', () => {
-          console.log("error in piping to server");
-          proxySocket.end();
+        socket.pipe(proxySocket).on('error', (err) => {
+          console.log("Error in piping to server\n", err.stack);
         });
     });
   }
-  readCommand(); // allow for the input on a new command
+  commandPrompt(); // allow for the input on a new command
 }
 
 
@@ -145,7 +141,8 @@ function urlBlocked(urlToCheck){
 
 
 /*------- Management Console --------*/
-function readCommand(){
+//prompts user for input
+function commandPrompt(){
   rl.setPrompt(">");
   rl.prompt();
 }
@@ -183,7 +180,7 @@ rl.on('line', (input) =>{
       help();
       break;
 
-    case "quit":
+    case "exit":
       proxyServer.close();
       process.exit();
       break;
@@ -192,9 +189,9 @@ rl.on('line', (input) =>{
       console.log("Unknown command, showing possible commands: ");
       help();
   }
-  readCommand();
+  commandPrompt(); // allow for the input of sequential commands
 });
 
 function help(){
-  console.log("Available commands are 'block', 'unblock', 'blocklist' and  'quit'.")
+  console.log("Available commands are 'block', 'unblock', 'blocklist' and  'exit'.")
 }
