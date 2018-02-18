@@ -39,7 +39,7 @@ function onRequest(request, response) {
   var targetUrl = url.parse(request.url,true);
   // if the request goes to a blocked url, stop the request and inform them of the
   if(urlBlocked(targetUrl.host)){
-    console.log("HTTP request to:", targetUrl.host, "has been blocked by the proxy.");
+    console.log("HTTP request to:", shortenDisplayURL(request.url), "has been blocked by the proxy.");
     response.writeHead(403);
     response.end("<h1>This domain is being actively blocked by the proxy.<h1>");
   }
