@@ -250,7 +250,7 @@ function shortenDisplayURL(urlToShorten){
 // Checks to see if url is in the cache, by attempting to retreive it from the cache
 // which is evaluated to false in an if statement
 // also validates the item in cache. If invlid, it is removed from the cache
-function isCachedAndValidAndValid(urlToCheck){
+function isCachedAndValid(urlToCheck){
   let item = cache[urlToCheck];
   if(item){
     if(item.expiresAt == null || item.expiresAt < Date.now())
