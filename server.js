@@ -1,8 +1,8 @@
-const listenerPort = 20000;//port that the proxy will operate on for http
-const host = "127.0.0.1";
+const listenerPort = 20000; // Port that the proxy will operate on
+const host = "127.0.0.1"; // Host of the proxy
 
 
-const http = require('http'); //import needed functions
+const http = require('http'); // Import needed functions
 const url = require('url');
 const net = require('net');
 const fs = require('fs');
@@ -12,11 +12,12 @@ const rl = readline.createInterface({
   output: process.stdout
 });
 
+// Limit the length of URLs to be printed to the console, so as it is readable.
 const maxDisplayableURLLength = 30;
 
-//load in the list of blocked URLs
+// Load in the list of blocked URLs
 var blockedURLs = JSON.parse(fs.readFileSync("blockedURLs.json"));
-//initialise an empty cache for that session
+// Initialise an empty cache for that session
 var cache = {};
 
 
@@ -36,14 +37,16 @@ proxyServer.listen(listenerPort, host, () => {
 // Handles http connections
 function onRequest(request, response) {
   var targetUrl = url.parse(request.url,true);
-
+  // if the request goes to a blocked url, stop the request and inform them of the
   if(urlBlocked(targetUrl.host)){
     console.log("HTTP request to:", targetUrl.host, "has been blocked by the proxy.");
     response.writeHead(403);
     response.end("<h1>This domain is being actively blocked by the proxy.<h1>");
   }
   else{
-    var itemInCache = isCached(request.url);
+    // Attempt to acquire the item from the cache
+    var itemInCache = isCachedAndValid(request.url);
+    // If the item is successfully retrieved from the cache, serve the data back to the client
     if(itemInCache){
       console.log('HTTP page found in the cache\n. Serving HTTP request to: ' + shortenDisplayURL(request.url) + ' from the cache.');
       const { statusCode, statusMessage, headers, data} = itemInCache;
@@ -62,22 +65,22 @@ function onRequest(request, response) {
       };
 
       // Creates the proxy request, and sends it off.
-      // Pipes the the readable proxy request through to the writable response of the
-      // client if it cannot be cached. No need for the use of options, as defaults to ending stream, as wanted
-      // piping is used to reduce the memory footprint of the proxy, as it doesn't have to
-      // buffer the entire request.
+      // Pipes the the readable proxy response through to the writable response of the
+      // client if it cannot be cached, so as to minimise memory footprint of buffering the
+      // response if it were to be cached. If the response is cachable, it is buffered and
+      // then added to the cache
       var proxyRequest = http.request(forwardingOptions, (proxyResponse)=>{
         // Set the client response to that of the response of the proxy request
         const { statusCode, statusMessage, headers } = proxyResponse;
         response.writeHead(statusCode, statusMessage, headers);
 
-        // if an item is cacheable, must aquire packets, otherwise it can be piped
+        // If an item is cacheable, must aquire packets, otherwise it can be piped
         if(isCachable(headers)){
-          //Create variable for caching responses to the http request
+          // Create variable for caching responses to the http request
   	      var data = [];
 
           proxyResponse.on('error', (err) => {
-            console.log(err);
+            console.log("Error with HTTP request", err.stack);
           });
 
           proxyResponse.on('data', (dataChunk) => {
@@ -92,7 +95,9 @@ function onRequest(request, response) {
           });
         }
         else
-          proxyResponse.pipe(response); //caching requires viewing of packets, so tunneling cannot be used
+          proxyResponse.pipe(response);
+          // As caching requires viewing of packets, tunneling cannot be used.
+          // But if the item is not cacheable, it can be piped.
       });
       request.pipe(proxyRequest);
     }
@@ -108,8 +113,7 @@ function onConnect(request, socket, head){
   // If the url is blocked, do not forward the request
   if(urlBlocked(targetUrl.hostname)){
     console.log("HTTPS request to: " + shortenDisplayURL(targetUrl.hostname) + " has been blocked by the proxy.");
-    socket.write("HTTP/" + request.httpVersion + " 403 Forbidden\r\n\r\n");
-    socket.end();
+    socket.end("HTTP/" + request.httpVersion + " 403 Forbidden\r\n");
   }
   else{
     console.log("Serving HTTPS request to:", shortenDisplayURL(targetUrl.hostname));
@@ -201,9 +205,9 @@ rl.on('line', (input) =>{
       break;
 
     case "blocklist":
-      var blocked = "Blocked URLs are : \n";
+      var blocked = "Blocked URLs are :";
       for (key in blockedURLs)
-        blocked += key + "\n";
+        blocked += "\n"+ key;
       console.log(blocked);
       break;
 
@@ -246,15 +250,17 @@ function shortenDisplayURL(urlToShorten){
 // Checks to see if url is in the cache, by attempting to retreive it from the cache
 // which is evaluated to false in an if statement
 // also validates the item in cache. If invlid, it is removed from the cache
-function isCached(urlToCheck){
+function isCachedAndValidAndValid(urlToCheck){
   let item = cache[urlToCheck];
   if(item){
     if(item.expiresAt == null || item.expiresAt < Date.now())
       return item;
-    else
+    else{
       delete cache[urlToCheck];
+      console.log(shortenDisplayURL(urlToCheck), " is out of date in the cache; removed.")
+    }
   }
-  return null;;
+  return null;
 }
 
 // Clears the cache
@@ -266,24 +272,25 @@ function resetCache(){
 // checks to see if an item is storable in the cache
 /*
     Cannot store :
-      Cache control : private, no-cache, no-store, max-age=0
+      Cache control : private, no-cache, no-store, max-age=0, must-revalidate
       Pragma: no-cache
 */
 function isCachable(headers){
   // Check to see if pragma is set to no-cache,
   // if so, do not add to the cache
-  let pragma = headers['pragma'];
+  let pragma = headers["pragma"];
   if(pragma)
-    if(pragma.includes('no-cache')) return false;
+    if(pragma.includes("no-cache")) return false;
 
   // Check to see if any cache control directives forbid caching on the server
-  let cacheControl =  headers['cache-control'];
+  let cacheControl =  headers["cache-control"];
   if(cacheControl){
     var cacheDirectives = cacheControl.split(', ');
     for(i in cacheDirectives){
       var directive = cacheDirectives[i];
-      if(directive === 'no-cache' || directive === 'private'||
-         directive === 'no-store' || directive === 'max-age=0'){
+      if(directive === "no-cache" || directive === "private"||
+         directive === "no-store" || directive === "max-age=0" ||
+         directive === "must-revalidate"){
         return false;
       }
     }
@@ -292,7 +299,8 @@ function isCachable(headers){
   else return false;
 }
 
-// Adds an item to the cache, if it has the needed entries
+// Adds an item to the cache, if it has the needed entries and sets when the item will
+// expire, based on the headers provided
 function addToCache(urlToCache, statusCode, statusMessage, headers, data){
   if(statusCode && statusMessage && headers && data){
     //adding item to the cache
@@ -318,7 +326,6 @@ function addToCache(urlToCache, statusCode, statusMessage, headers, data){
         }
       }
     }
-
     console.log( 'Item added to cache: ', shortenDisplayURL(urlToCache));
   }
 }
