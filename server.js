@@ -48,7 +48,7 @@ function onRequest(request, response) {
     var itemInCache = isCachedAndValid(request.url);
     // If the item is successfully retrieved from the cache, serve the data back to the client
     if(itemInCache){
-      console.log('HTTP page found in the cache\n. Serving HTTP request to: ' + shortenDisplayURL(request.url) + ' from the cache.');
+      console.log('HTTP page found in the cache. \nServing HTTP request to: ' + shortenDisplayURL(request.url) + ' from the cache.');
       const { statusCode, statusMessage, headers, data} = itemInCache;
       response.writeHead(statusCode, statusMessage, headers);
       response.end(data);
@@ -253,7 +253,7 @@ function shortenDisplayURL(urlToShorten){
 function isCachedAndValid(urlToCheck){
   let item = cache[urlToCheck];
   if(item){
-    if(item.expiresAt == null || item.expiresAt < Date.now())
+    if(item.expiresAt == null || Date.now() < item.expiresAt)
       return item;
     else{
       delete cache[urlToCheck];
@@ -272,7 +272,7 @@ function resetCache(){
 // checks to see if an item is storable in the cache
 /*
     Cannot store :
-      Cache control : private, no-cache, no-store, max-age=0, must-revalidate
+      Cache control : private, no-cache, no-store, max-age=0
       Pragma: no-cache
 */
 function isCachable(headers){
@@ -289,8 +289,7 @@ function isCachable(headers){
     for(i in cacheDirectives){
       var directive = cacheDirectives[i];
       if(directive === "no-cache" || directive === "private"||
-         directive === "no-store" || directive === "max-age=0" ||
-         directive === "must-revalidate"){
+         directive === "no-store" || directive === "max-age=0"){
         return false;
       }
     }
